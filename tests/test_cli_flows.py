@@ -21,6 +21,16 @@ def run_vybe(args, env):
         capture_output=True,
     )
 
+def run_module(module, args, env):
+    cmd = [sys.executable, "-m", module] + args
+    return subprocess.run(
+        cmd,
+        cwd=str(REPO_ROOT),
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+
 
 class VybeCliFlowsTest(unittest.TestCase):
     def setUp(self):
@@ -29,9 +39,11 @@ class VybeCliFlowsTest(unittest.TestCase):
         self.state_file.close()
         self.base_env = os.environ.copy()
         self.base_env["PYTHONPATH"] = SRC_PATH
+        self.base_env["HOME"] = self.tmpdir.name
         self.base_env["VYBE_DIR"] = self.tmpdir.name
         self.base_env["VYBE_INDEX"] = str(Path(self.tmpdir.name) / "index.jsonl")
         self.base_env["VYBE_STATE"] = self.state_file.name
+        self.base_env["VYBE_CONFIG"] = str(Path(self.tmpdir.name) / "config.json")
 
     def tearDown(self):
         try:
@@ -112,6 +124,28 @@ class VybeCliFlowsTest(unittest.TestCase):
         self.assertTrue(payload["errors_included"])
         self.assertGreaterEqual(len(payload["error_blocks"]), 1)
         self.assertNotIn("abc123", payload["output"])
+
+    def test_main_module_entrypoint(self):
+        proc = run_module("vybe", ["--help"], self.base_env)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("vybe - vibe coding terminal capture toolkit", proc.stdout)
+
+    def test_init_cfg_and_completion_install(self):
+        init = run_vybe(["init"], self.base_env)
+        self.assertEqual(init.returncode, 0, init.stderr)
+        cfg_path = Path(self.base_env["VYBE_CONFIG"])
+        self.assertTrue(cfg_path.exists())
+
+        cfg = run_vybe(["cfg", "--json"], self.base_env)
+        self.assertEqual(cfg.returncode, 0, cfg.stderr)
+        cfg_obj = json.loads(cfg.stdout)
+        self.assertIn("paths", cfg_obj)
+        self.assertIn("config", cfg_obj)
+
+        comp = run_vybe(["completion", "install", "zsh"], self.base_env)
+        self.assertEqual(comp.returncode, 0, comp.stderr)
+        dest = Path(self.base_env["HOME"]) / ".zsh" / "completions" / "_vybe"
+        self.assertTrue(dest.exists())
 
 
 if __name__ == "__main__":

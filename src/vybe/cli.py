@@ -30,6 +30,7 @@ HOME = Path.home()
 VYBE_DIR = Path(os.environ.get("VYBE_DIR", str(HOME / ".cache" / APP)))
 VYBE_STATE = Path(os.environ.get("VYBE_STATE", str(HOME / ".config" / APP / "state.json")))
 VYBE_INDEX = Path(os.environ.get("VYBE_INDEX", str(HOME / ".cache" / APP / "index.jsonl")))
+VYBE_CONFIG = Path(os.environ.get("VYBE_CONFIG", str(HOME / ".config" / APP / "config.json")))
 MAX_INDEX = int(os.environ.get("VYBE_MAX_INDEX", "2000"))
 _UNSET = object()
 
@@ -45,6 +46,7 @@ def ensure_dirs() -> None:
     VYBE_DIR.mkdir(parents=True, exist_ok=True)
     VYBE_STATE.parent.mkdir(parents=True, exist_ok=True)
     VYBE_INDEX.parent.mkdir(parents=True, exist_ok=True)
+    VYBE_CONFIG.parent.mkdir(parents=True, exist_ok=True)
 
 def load_state() -> Dict[str, Any]:
     try:
@@ -55,6 +57,16 @@ def load_state() -> Dict[str, Any]:
 def save_state(state: Dict[str, Any]) -> None:
     ensure_dirs()
     VYBE_STATE.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+def load_config() -> Dict[str, Any]:
+    try:
+        return json.loads(VYBE_CONFIG.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+def save_config(cfg: Dict[str, Any]) -> None:
+    ensure_dirs()
+    VYBE_CONFIG.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
 
 def append_index(record: Dict[str, Any]) -> None:
     ensure_dirs()
@@ -222,6 +234,10 @@ def _run_quiet(args: List[str], cwd: Optional[str] = None) -> Optional[str]:
         return out.strip()
     except Exception:
         return None
+
+def completion_sources_dir() -> Path:
+    # Source tree layout: repo/src/vybe/cli.py -> repo/completions
+    return Path(__file__).resolve().parents[2] / "completions"
 
 # ---------- commands ----------
 
@@ -755,6 +771,135 @@ def cmd_doctor(args: List[str]) -> int:
         print("git: not a repository")
     return 0
 
+def cmd_cfg(args: List[str]) -> int:
+    as_json = "--json" in args
+    cfg = load_config()
+    clip_cmd = _clipboard_cmd()
+    payload = {
+        "tool": APP,
+        "version": __version__,
+        "paths": {
+            "VYBE_DIR": str(VYBE_DIR),
+            "VYBE_STATE": str(VYBE_STATE),
+            "VYBE_INDEX": str(VYBE_INDEX),
+            "VYBE_CONFIG": str(VYBE_CONFIG),
+            "VYBE_MAX_INDEX": MAX_INDEX,
+        },
+        "clipboard_detected": clip_cmd,
+        "clipboard_tools": {
+            "xclip": shutil.which("xclip"),
+            "xsel": shutil.which("xsel"),
+            "wl-copy": shutil.which("wl-copy"),
+        },
+        "config": cfg,
+    }
+    if as_json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    print(f"vybe cfg (v{__version__})")
+    print("paths:")
+    for k, v in payload["paths"].items():
+        print(f"  {k}: {v}")
+    print(f"clipboard_detected: {clip_cmd or 'none'}")
+    print("clipboard_tools:")
+    for k, v in payload["clipboard_tools"].items():
+        print(f"  {k}: {v or 'missing'}")
+    print("config:")
+    if cfg:
+        print(json.dumps(cfg, ensure_ascii=False, indent=2))
+    else:
+        print("  {}")
+    return 0
+
+def cmd_init(args: List[str]) -> int:
+    force = "--force" in args
+    ensure_dirs()
+    clip_cmd = _clipboard_cmd()
+    cfg = load_config()
+    if cfg and not force:
+        print(f"Config already exists: {VYBE_CONFIG}")
+        print("Use `vybe init --force` to overwrite detected defaults.")
+        return 0
+    cfg = {
+        "created_at": time.time(),
+        "created_at_human": human_ts(time.time()),
+        "paths": {
+            "VYBE_DIR": str(VYBE_DIR),
+            "VYBE_STATE": str(VYBE_STATE),
+            "VYBE_INDEX": str(VYBE_INDEX),
+            "VYBE_CONFIG": str(VYBE_CONFIG),
+        },
+        "clipboard": {
+            "preferred_cmd": clip_cmd,
+            "tool": clip_cmd[0] if clip_cmd else None,
+        },
+    }
+    save_config(cfg)
+    print(f"Initialized: {VYBE_CONFIG}")
+    if clip_cmd:
+        print(f"Detected clipboard tool: {clip_cmd[0]}")
+    else:
+        print("No clipboard tool detected (install xclip/xsel or wl-clipboard).")
+    return 0
+
+def cmd_completion(args: List[str]) -> int:
+    if not args or args[0] in ("-h", "--help", "help"):
+        print("Usage: vybe completion install <zsh|bash|fish>", file=sys.stderr)
+        return 2
+    sub = args[0]
+    if sub != "install":
+        print("Usage: vybe completion install <zsh|bash|fish>", file=sys.stderr)
+        return 2
+    if len(args) < 2:
+        print("Usage: vybe completion install <zsh|bash|fish>", file=sys.stderr)
+        return 2
+    shell = args[1]
+    src_dir = completion_sources_dir()
+    mapping = {
+        "zsh": ("_vybe", HOME / ".zsh" / "completions" / "_vybe"),
+        "bash": ("vybe.bash", HOME / ".local" / "share" / "bash-completion" / "completions" / "vybe"),
+        "fish": ("vybe.fish", HOME / ".config" / "fish" / "completions" / "vybe.fish"),
+    }
+    if shell not in mapping:
+        print("Shell must be one of: zsh, bash, fish", file=sys.stderr)
+        return 2
+    src_name, dest = mapping[shell]
+    src = src_dir / src_name
+    if not src.exists():
+        print(f"Completion source not found: {src}", file=sys.stderr)
+        return 1
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, dest)
+    print(f"Installed {shell} completion: {dest}")
+    if shell == "zsh":
+        print("If needed, ensure this in ~/.zshrc:")
+        print("  fpath=(~/.zsh/completions $fpath)")
+        print("  autoload -Uz compinit && compinit")
+    elif shell == "bash":
+        print("If not auto-loaded, add to your shell profile:")
+        print(f"  source {dest}")
+    else:
+        print("Fish should auto-load completions from ~/.config/fish/completions.")
+    return 0
+
+def cmd_tags(_args: List[str]) -> int:
+    records = load_index_records()
+    if not records:
+        print("No index yet. Run: vybe run <cmd...>", file=sys.stderr)
+        return 1
+    counts: Dict[str, int] = {}
+    for rec in records:
+        tag = rec.get("tag")
+        if not tag:
+            continue
+        counts[tag] = counts.get(tag, 0) + 1
+    if not counts:
+        print("No tags found yet.")
+        return 0
+    for tag, count in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
+        print(f"{tag}\t{count}")
+    return 0
+
 def cmd_share(args: List[str]) -> int:
     include_full = "--full" in args
     redact = "--redact" in args
@@ -943,6 +1088,11 @@ Commands:
   vybe share [--full] [--redact] [--errors] [--json] [--clip]
                            Build a Markdown share bundle from latest capture
   vybe doctor [--json]     Print environment/debug snapshot
+  vybe cfg [--json]        Print current config and effective paths
+  vybe init [--force]      Initialize ~/.config/vybe defaults
+  vybe completion install <zsh|bash|fish>
+                           Install shell completion
+  vybe tags                List known tags and usage counts
   vybe pane [LINES]        (tmux) capture pane scrollback (default 2000)
   vybe version             Print version
 
@@ -954,6 +1104,7 @@ Env:
   VYBE_DIR        log dir (default ~/.cache/vybe)
   VYBE_STATE      state file (default ~/.config/vybe/state.json)
   VYBE_INDEX      index file (default ~/.cache/vybe/index.jsonl)
+  VYBE_CONFIG     config file (default ~/.config/vybe/config.json)
   VYBE_MAX_INDEX  max index entries (default 2000)
 """
 
@@ -994,6 +1145,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         "diff": cmd_diff,
         "share": cmd_share,
         "doctor": cmd_doctor,
+        "cfg": cmd_cfg,
+        "init": cmd_init,
+        "completion": cmd_completion,
+        "tags": cmd_tags,
         "pane": cmd_pane,
         "version": cmd_version,
     }

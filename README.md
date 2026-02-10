@@ -1,5 +1,13 @@
 # Vybe
 
+```text
+  ____   ____       ___
+  \   \ /   /___ __ | |__   ____
+   \   Y   /(   |  || __ \ / __ \
+    \     /  \___  || \_\ \  ___/
+     \___/   (_____||_____/\____)
+```
+
 Vybe is a **vibe coding terminal toolkit**: run a command, capture its output, and instantly reuse it —
 copy to clipboard, wrap in Markdown, search errors, jump to the last failure, or grab tmux scrollback.
 
@@ -23,6 +31,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e .
 vybe --help
+python -m vybe --help
 ```
 
 ## Usage
@@ -47,6 +56,9 @@ vybe share --clip
 vybe share --json
 vybe share --json --errors --redact
 vybe doctor
+vybe cfg
+vybe init
+vybe completion install zsh
 vybe md bash
 vybe grep "Traceback|ERROR" --i
 ```
@@ -101,6 +113,7 @@ Use tags to keep one debugging thread grouped:
 vybe run --tag auth pytest -q
 vybe rr --tag auth
 vybe ls --tag auth
+vybe tags
 ```
 
 See exactly what changed between your latest two captures:
@@ -124,6 +137,8 @@ Get quick environment diagnostics:
 ```bash
 vybe doctor
 vybe doctor --json
+vybe cfg --json
+vybe init
 ```
 
 ## CLI stability
@@ -178,8 +193,16 @@ vybe --help
 
 ## Clipboard support
 Vybe auto-detects clipboard tools:
-- X11: `xclip` (preferred) or `xsel`
+- X11: `xclip` or `xsel`
 - Wayland: `wl-copy`
+
+## Shell completion install
+Install directly from the CLI:
+```bash
+vybe completion install zsh
+vybe completion install bash
+vybe completion install fish
+```
 
 ## tmux scrollback capture
 ```bash
@@ -191,6 +214,7 @@ vybe open
 - `VYBE_DIR` log dir (default `~/.cache/vybe`)
 - `VYBE_STATE` state file (default `~/.config/vybe/state.json`)
 - `VYBE_INDEX` index file (default `~/.cache/vybe/index.jsonl`)
+- `VYBE_CONFIG` config file (default `~/.config/vybe/config.json`)
 - `VYBE_MAX_INDEX` max index entries (default `2000`)
 
 ## Shell completions
@@ -199,14 +223,7 @@ See `completions/`:
 - zsh: `completions/_vybe`
 - fish: `completions/vybe.fish`
 
-### zsh (Kali)
-```bash
-mkdir -p ~/.zsh/completions
-cp completions/_vybe ~/.zsh/completions/
-echo 'fpath=(~/.zsh/completions $fpath)' >> ~/.zshrc
-autoload -Uz compinit && compinit
-exec zsh -l
-```
+Use `vybe completion install <shell>` instead of copying files manually.
 
 ## License
 MIT

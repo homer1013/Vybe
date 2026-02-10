@@ -8,6 +8,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e .
 vybe --help
+python -m vybe --help
 ```
 
 ## Guidelines
@@ -19,7 +20,7 @@ vybe --help
   - completions files in `completions/`
   - README examples
 
-## Testing (manual for now)
+## Testing (manual smoke)
 Run:
 ```bash
 vybe run echo hello
@@ -40,6 +41,9 @@ vybe diff
 vybe share --redact --errors
 vybe share --json --errors --redact
 vybe doctor
+vybe cfg
+vybe init --force
+vybe completion install zsh
 vybe md bash
 ```
 

@@ -3,12 +3,12 @@
 This file defines the stability contract for human users, scripts, and coding agents.
 
 ## Scope
-- Applies to `0.6.x` and later until an explicit breaking-change note is published.
+- Applies to `0.8.x` and later until an explicit breaking-change note is published.
 - Contract covers command names, core flags, and primary output shapes.
 
 ## Stable commands and aliases
 - Core: `run`, `retry`, `last`, `snip`, `snipclip`, `ls`, `grep`, `md`, `clip`, `fail`
-- Agent/support: `errors`, `export`, `diff`, `share`, `doctor`, `pane`
+- Agent/support: `errors`, `export`, `diff`, `share`, `doctor`, `cfg`, `init`, `completion`, `tags`, `pane`
 - Aliases: `r`, `rr`, `l`, `s`, `sc`, `o`, `ll`
 
 ## Stable flags
@@ -20,6 +20,9 @@ This file defines the stability contract for human users, scripts, and coding ag
 - `diff`: `--full`, `--tag <name>`
 - `share`: `--full`, `--redact`, `--errors`, `--json`, `--clip`
 - `doctor`: `--json`
+- `cfg`: `--json`
+- `init`: `--force`
+- `completion`: `install <zsh|bash|fish>`
 
 ## Stable output contracts
 - `export --last --json` is machine-readable JSON and will remain backward-compatible:
@@ -27,6 +30,7 @@ This file defines the stability contract for human users, scripts, and coding ag
   - New keys may be added.
 - `share --json` is machine-readable JSON with the same compatibility rule.
 - `doctor --json` is machine-readable JSON with the same compatibility rule.
+- `cfg --json` is machine-readable JSON with the same compatibility rule.
 - Human-readable outputs may gain extra lines, but command meaning remains stable.
 
 ## Compatibility policy
