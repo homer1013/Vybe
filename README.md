@@ -1,2 +1,1 @@
-# Vybe
-Vibe coding CLI tool kit
+# Vybe\n\nVibe coding terminal capture toolkit.
