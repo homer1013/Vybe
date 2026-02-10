@@ -11,6 +11,21 @@
 Vybe is a **vibe coding terminal toolkit**: run a command, capture its output, and instantly reuse it —
 copy to clipboard, wrap in Markdown, search errors, jump to the last failure, or grab tmux scrollback.
 
+## Why Vybe?
+Without Vybe:
+- Run command
+- Scroll/copy terminal output manually
+- Redact secrets by hand
+- Reformat for LLM/issue tracker
+- Repeat after each retry
+
+With Vybe:
+- `vybe r ...` run + capture
+- `vybe errors` isolate failures
+- `vybe sc --redact` copy safe output fast
+- `vybe prompt debug --redact` generate LLM-ready prompt
+- `vybe rr` retry quickly
+
 ## Highlights
 - **`vybe run ...`** streams output live *and* saves it.
 - **`vybe retry`** reruns your last `vybe run` command.
@@ -21,9 +36,23 @@ copy to clipboard, wrap in Markdown, search errors, jump to the last failure, or
 - **`vybe run --tag <name>`** groups captures by task/session.
 - **`vybe diff`** shows what changed between your latest two captures.
 - **`vybe share`** builds a Markdown-ready report for issues/LLM chats.
+- **`vybe prompt`** generates LLM-ready prompts for debug/review/explain workflows.
 - **`vybe doctor`** prints a fast environment snapshot for debugging setup issues.
 - **`vybe fail`** jumps back to the most recent failing run.
 - Works great on Kali (zsh) and supports tmux scrollback capture.
+
+## Demo
+Quick terminal demo recording (asciinema):
+```bash
+asciinema rec docs/demo.cast
+# run a loop like:
+# vybe r pytest -q
+# vybe errors
+# vybe prompt debug --redact
+# vybe rr
+```
+
+You can convert to GIF with `agg` or share the cast directly.
 
 ## Install (dev / from source)
 ```bash
@@ -91,6 +120,9 @@ vybe share --redact --errors
 vybe share --clip
 vybe share --json
 vybe share --json --errors --redact
+vybe prompt debug --redact
+vybe prompt review
+vybe prompt explain
 vybe doctor
 vybe self-check
 vybe cfg
@@ -133,6 +165,7 @@ Agent handoff loop:
 ```bash
 vybe export --last --json --snip --redact
 vybe share --json --errors --redact
+vybe prompt debug --redact
 vybe doctor --json
 ```
 
@@ -168,6 +201,9 @@ vybe share --redact --errors
 vybe share --clip
 vybe share --json
 vybe share --json --errors --redact
+vybe prompt debug --redact
+vybe prompt review --redact
+vybe prompt explain --redact
 ```
 
 Get quick environment diagnostics:
@@ -184,6 +220,12 @@ vybe init
 Vybe keeps a stable v1 CLI contract for humans, scripts, and agents:
 - See `docs/CLI_CONTRACT.md`
 - Machine-readable JSON outputs are additive: existing keys remain, new keys may be added
+
+## Examples
+See `examples/` for real workflows:
+- `examples/pytest-debug-loop.md`
+- `examples/frontend-build-failure.md`
+- `examples/serial-monitor-nonutf8.md`
 
 ## Agent quickstart (human + LLM loop)
 Use this when pairing with ChatGPT/Codex/Claude during debugging.

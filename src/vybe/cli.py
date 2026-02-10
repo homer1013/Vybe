@@ -1080,6 +1080,81 @@ def cmd_share(args: List[str]) -> int:
     sys.stdout.write(text_out)
     return 0
 
+def cmd_prompt(args: List[str]) -> int:
+    if not args:
+        print("Usage: vybe prompt <debug|review|explain> [--redact] [extra request...]", file=sys.stderr)
+        return 2
+
+    mode = args[0]
+    rest = args[1:]
+    redact = "--redact" in rest
+    extra_parts = [a for a in rest if a != "--redact"]
+    extra = " ".join(extra_parts).strip()
+
+    if mode not in ("debug", "review", "explain"):
+        print("Mode must be one of: debug, review, explain", file=sys.stderr)
+        return 2
+
+    p = latest_file()
+    if not p or not p.exists():
+        print("No previous capture. Use: vybe run <cmd...>", file=sys.stderr)
+        return 1
+
+    st = load_state()
+    cmd = st.get("last_cmd") if isinstance(st.get("last_cmd"), list) else []
+    cmd_str = shell_quote_cmd(cmd) if cmd else "-"
+    rc = st.get("last_rc")
+    cwd = st.get("last_cwd") or "-"
+    tag = st.get("last_tag")
+    t = st.get("last_time")
+    t_human = human_ts(float(t)) if t else "-"
+
+    output = strip_header(read_text(p))
+    if redact:
+        output = redact_text(output)
+        cmd_str = redact_text(cmd_str)
+
+    mode_prompts = {
+        "debug": "Find root cause and propose the smallest safe fix.",
+        "review": "Review this output and suggest risks, regressions, and missing tests.",
+        "explain": "Explain what happened in plain language and what to do next.",
+    }
+
+    lines = [
+        f"# Vybe Prompt ({mode})",
+        "",
+        "You are helping with a terminal capture from Vybe.",
+        mode_prompts[mode],
+    ]
+    if extra:
+        lines.append(f"Extra request: {extra}")
+    lines.extend([
+        "",
+        "## Context",
+        f"- time: {t_human}",
+        f"- command: `{cmd_str}`",
+        f"- exit code: {rc}",
+        f"- cwd: `{cwd}`",
+        f"- file: `{p}`",
+    ])
+    if tag:
+        lines.append(f"- tag: `{tag}`")
+    lines.extend([
+        "",
+        "## Output",
+        "```text",
+        output.rstrip("\n"),
+        "```",
+        "",
+        "## Response format",
+        "1. Diagnosis",
+        "2. Most likely root cause",
+        "3. Minimal fix",
+        "4. Verification steps",
+    ])
+    print("\n".join(lines) + "\n")
+    return 0
+
 def cmd_pane(args: List[str]) -> int:
     if "TMUX" not in os.environ:
         print("vybe pane requires tmux (TMUX env var not set).", file=sys.stderr)
@@ -1159,6 +1234,8 @@ Commands:
                            Unified diff: latest capture vs previous capture
   vybe share [--full] [--redact] [--errors] [--json] [--clip]
                            Build a Markdown share bundle from latest capture
+  vybe prompt <debug|review|explain> [--redact] [extra request...]
+                           Generate an LLM-ready prompt from latest capture
   vybe doctor [--json]     Print environment/debug snapshot
   vybe self-check [--json]
                            Check install environment and print update guidance
@@ -1218,6 +1295,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "export": cmd_export,
         "diff": cmd_diff,
         "share": cmd_share,
+        "prompt": cmd_prompt,
         "doctor": cmd_doctor,
         "self-check": cmd_self_check,
         "cfg": cmd_cfg,

@@ -171,6 +171,19 @@ class VybeCliFlowsTest(unittest.TestCase):
         self.assertIn("recommendations", obj)
         self.assertIsInstance(obj["recommendations"], list)
 
+    def test_prompt_debug(self):
+        fail_run = run_vybe(
+            ["r", sys.executable, "-c", "print('ValueError: boom'); raise SystemExit(1)"],
+            self.base_env,
+        )
+        self.assertNotEqual(fail_run.returncode, 0)
+
+        prompt = run_vybe(["prompt", "debug"], self.base_env)
+        self.assertEqual(prompt.returncode, 0, prompt.stderr)
+        self.assertIn("# Vybe Prompt (debug)", prompt.stdout)
+        self.assertIn("ValueError: boom", prompt.stdout)
+        self.assertIn("## Response format", prompt.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

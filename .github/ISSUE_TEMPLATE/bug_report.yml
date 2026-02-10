@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a bug with reproducible steps and environment details.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this.
+
+        For the fastest triage, include:
+        - `vybe --version`
+        - `vybe doctor --json`
+        - exact command + output (consider `vybe share --redact --errors`)
+  - type: input
+    id: version
+    attributes:
+      label: Vybe version
+      description: Output of `vybe --version`
+      placeholder: "0.8.3"
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened vs what you expected?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Include exact commands.
+      placeholder: |
+        1. Run `vybe run ...`
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Diagnostics (`vybe doctor --json`)
+      description: Paste the output here.
+      render: json
+  - type: textarea
+    id: share
+    attributes:
+      label: Optional capture share bundle
+      description: Paste `vybe share --redact --errors` output.
+      render: markdown

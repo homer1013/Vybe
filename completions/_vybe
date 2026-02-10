@@ -25,6 +25,7 @@ commands=(
   "export:Export latest capture in JSON for agents"
   "diff:Diff latest capture against the previous capture"
   "share:Build Markdown share bundle from latest capture"
+  "prompt:Generate LLM-ready prompt from latest capture"
   "doctor:Print environment and tool diagnostics"
   "self-check:Check install environment and update guidance"
   "cfg:Print current config and paths"

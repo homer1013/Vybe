@@ -8,7 +8,7 @@ This file defines the stability contract for human users, scripts, and coding ag
 
 ## Stable commands and aliases
 - Core: `run`, `retry`, `last`, `snip`, `snipclip`, `ls`, `grep`, `md`, `clip`, `fail`
-- Agent/support: `errors`, `export`, `diff`, `share`, `doctor`, `self-check`, `cfg`, `init`, `completion`, `tags`, `pane`
+- Agent/support: `errors`, `export`, `diff`, `share`, `prompt`, `doctor`, `self-check`, `cfg`, `init`, `completion`, `tags`, `pane`
 - Aliases: `r`, `rr`, `l`, `s`, `sc`, `o`, `ll`
 
 ## Stable flags
@@ -19,6 +19,7 @@ This file defines the stability contract for human users, scripts, and coding ag
 - `export`: `--last --json [--snip] [--redact]`
 - `diff`: `--full`, `--tag <name>`
 - `share`: `--full`, `--redact`, `--errors`, `--json`, `--clip`
+- `prompt`: `<debug|review|explain>`, `--redact`
 - `doctor`: `--json`
 - `self-check`: `--json`
 - `cfg`: `--json`

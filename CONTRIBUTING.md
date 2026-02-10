@@ -40,6 +40,7 @@ vybe ls --tag smoke
 vybe diff
 vybe share --redact --errors
 vybe share --json --errors --redact
+vybe prompt debug --redact
 vybe doctor
 vybe self-check
 vybe cfg
