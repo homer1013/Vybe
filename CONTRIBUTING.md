@@ -23,7 +23,22 @@ vybe --help
 Run:
 ```bash
 vybe run echo hello
+vybe run --tag smoke echo hello
+vybe r echo hello
+vybe retry --tag smoke
+vybe rr
 vybe last
+vybe l
 vybe snip
+vybe s
+vybe sc --redact
+vybe errors
+vybe export --last --json --snip
+vybe ll
+vybe ls --tag smoke
+vybe diff
+vybe share --redact --errors
+vybe share --json --errors --redact
+vybe doctor
 vybe md bash
 ```

@@ -5,7 +5,15 @@ copy to clipboard, wrap in Markdown, search errors, jump to the last failure, or
 
 ## Highlights
 - **`vybe run ...`** streams output live *and* saves it.
+- **`vybe retry`** reruns your last `vybe run` command.
 - **`vybe snipclip`** copies *output only* (perfect for issues/ChatGPT).
+- **`vybe snipclip --redact`** copies output with common secrets masked.
+- **`vybe errors`** extracts likely error blocks from latest capture.
+- **`vybe export --last --json`** emits machine-readable context for agents.
+- **`vybe run --tag <name>`** groups captures by task/session.
+- **`vybe diff`** shows what changed between your latest two captures.
+- **`vybe share`** builds a Markdown-ready report for issues/LLM chats.
+- **`vybe doctor`** prints a fast environment snapshot for debugging setup issues.
 - **`vybe fail`** jumps back to the most recent failing run.
 - Works great on Kali (zsh) and supports tmux scrollback capture.
 
@@ -20,11 +28,118 @@ vybe --help
 ## Usage
 ```bash
 vybe run pytest -q
+vybe retry
+vybe r pytest -q
+vybe run --tag auth pytest -q
+vybe rr --cwd
 vybe fail
+vybe s
+vybe sc
+vybe sc --redact
+vybe ll 5
+vybe ls --tag auth
 vybe snipclip
+vybe errors
+vybe export --last --json --snip
+vybe diff
+vybe share --redact --errors
+vybe share --clip
+vybe share --json
+vybe share --json --errors --redact
+vybe doctor
 vybe md bash
 vybe grep "Traceback|ERROR" --i
 ```
+
+## Speed aliases
+- `vybe r ...` is the same as `vybe run ...`
+- `vybe rr` is the same as `vybe retry`
+- `vybe rr --cwd` retries in the original working directory
+- `vybe rr --tag <name>` retries and assigns a tag
+- `vybe l` is the same as `vybe last`
+- `vybe s` is the same as `vybe snip`
+- `vybe sc` is the same as `vybe snipclip`
+- `vybe o` is the same as `vybe open`
+- `vybe ll [N]` is the same as `vybe ls [N]`
+- Full commands remain the canonical docs and are recommended in scripts/automation
+
+## LLM-friendly JSON export
+Use this to hand structured context to coding agents.
+```bash
+vybe export --last --json
+vybe export --last --json --snip
+vybe export --last --json --snip --redact
+```
+
+## Tagging and diffs
+Use tags to keep one debugging thread grouped:
+```bash
+vybe run --tag auth pytest -q
+vybe rr --tag auth
+vybe ls --tag auth
+```
+
+See exactly what changed between your latest two captures:
+```bash
+vybe diff
+vybe diff --tag auth
+vybe diff --full
+```
+
+## Share bundles and doctor
+Generate a ready-to-paste Markdown bundle:
+```bash
+vybe share
+vybe share --redact --errors
+vybe share --clip
+vybe share --json
+vybe share --json --errors --redact
+```
+
+Get quick environment diagnostics:
+```bash
+vybe doctor
+vybe doctor --json
+```
+
+## Agent quickstart (human + LLM loop)
+Use this when pairing with ChatGPT/Codex/Claude during debugging.
+
+1) Run and capture
+```bash
+vybe r pytest -q
+```
+
+2) Copy output-only to clipboard for your LLM
+```bash
+vybe sc
+```
+
+3) Apply changes, then retry quickly
+```bash
+vybe rr
+```
+
+4) If you moved directories, retry in the original working dir
+```bash
+vybe rr --cwd
+```
+
+5) Check recent attempts fast
+```bash
+vybe ll 8
+```
+
+Failure-first loop:
+```bash
+vybe fail
+vybe s
+vybe sc
+```
+
+Tip for agents and scripts:
+- Prefer full commands in automation (`vybe run`, `vybe retry`) for clarity.
+- Use aliases interactively for speed.
 
 ### Command reference
 Run:
