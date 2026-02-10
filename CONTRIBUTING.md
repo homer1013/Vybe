@@ -42,3 +42,12 @@ vybe share --json --errors --redact
 vybe doctor
 vybe md bash
 ```
+
+Automated checks:
+```bash
+python -m py_compile src/vybe/cli.py
+PYTHONPATH=src python -m unittest discover -s tests -v
+```
+
+## Stability contract
+- Keep `docs/CLI_CONTRACT.md` updated when changing command names, flags, or JSON output contracts.

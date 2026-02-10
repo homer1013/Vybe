@@ -63,6 +63,30 @@ vybe grep "Traceback|ERROR" --i
 - `vybe ll [N]` is the same as `vybe ls [N]`
 - Full commands remain the canonical docs and are recommended in scripts/automation
 
+## Quick recipes
+Fast debug loop:
+```bash
+vybe r pytest -q
+vybe errors
+vybe share --redact --errors --clip
+vybe rr
+```
+
+Tagged task loop:
+```bash
+vybe run --tag auth pytest -q
+vybe rr --tag auth
+vybe ls --tag auth
+vybe diff --tag auth
+```
+
+Agent handoff loop:
+```bash
+vybe export --last --json --snip --redact
+vybe share --json --errors --redact
+vybe doctor --json
+```
+
 ## LLM-friendly JSON export
 Use this to hand structured context to coding agents.
 ```bash
@@ -101,6 +125,11 @@ Get quick environment diagnostics:
 vybe doctor
 vybe doctor --json
 ```
+
+## CLI stability
+Vybe keeps a stable v1 CLI contract for humans, scripts, and agents:
+- See `docs/CLI_CONTRACT.md`
+- Machine-readable JSON outputs are additive: existing keys remain, new keys may be added
 
 ## Agent quickstart (human + LLM loop)
 Use this when pairing with ChatGPT/Codex/Claude during debugging.
