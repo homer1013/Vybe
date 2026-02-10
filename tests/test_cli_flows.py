@@ -106,6 +106,21 @@ class VybeCliFlowsTest(unittest.TestCase):
         self.assertNotIn("abc123", payload["text"])
         self.assertIn("[REDACTED]", payload["text"])
 
+    def test_non_utf8_output_does_not_crash(self):
+        bad_bytes = (
+            "import sys; "
+            "sys.stdout.buffer.write(b'hello\\\\x80world\\\\n'); "
+            "sys.stdout.buffer.flush()"
+        )
+        run_bad = run_vybe(["r", sys.executable, "-c", bad_bytes], self.base_env)
+        self.assertEqual(run_bad.returncode, 0, run_bad.stderr)
+        self.assertIn("Saved:", run_bad.stdout)
+
+        snip = run_vybe(["s"], self.base_env)
+        self.assertEqual(snip.returncode, 0, snip.stderr)
+        self.assertIn("hello", snip.stdout)
+        self.assertIn("world", snip.stdout)
+
     def test_share_json_with_errors(self):
         fail_run = run_vybe(
             [
