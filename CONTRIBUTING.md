@@ -41,6 +41,7 @@ vybe diff
 vybe share --redact --errors
 vybe share --json --errors --redact
 vybe doctor
+vybe self-check
 vybe cfg
 vybe init --force
 vybe completion install zsh

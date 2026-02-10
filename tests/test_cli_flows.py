@@ -162,6 +162,15 @@ class VybeCliFlowsTest(unittest.TestCase):
         dest = Path(self.base_env["HOME"]) / ".zsh" / "completions" / "_vybe"
         self.assertTrue(dest.exists())
 
+    def test_self_check_json(self):
+        check = run_vybe(["self-check", "--json"], self.base_env)
+        self.assertEqual(check.returncode, 0, check.stderr)
+        obj = json.loads(check.stdout)
+        self.assertIn("externally_managed", obj)
+        self.assertIn("pipx_available", obj)
+        self.assertIn("recommendations", obj)
+        self.assertIsInstance(obj["recommendations"], list)
+
 
 if __name__ == "__main__":
     unittest.main()

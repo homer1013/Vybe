@@ -19,6 +19,7 @@ import signal
 import difflib
 import subprocess
 import shutil
+import sysconfig
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -238,6 +239,18 @@ def _run_quiet(args: List[str], cwd: Optional[str] = None) -> Optional[str]:
 def completion_sources_dir() -> Path:
     # Source tree layout: repo/src/vybe/cli.py -> repo/completions
     return Path(__file__).resolve().parents[2] / "completions"
+
+def _is_externally_managed_python() -> bool:
+    try:
+        stdlib = sysconfig.get_path("stdlib")
+        if not stdlib:
+            return False
+        return (Path(stdlib) / "EXTERNALLY-MANAGED").exists()
+    except Exception:
+        return False
+
+def _in_virtualenv() -> bool:
+    return bool(getattr(sys, "real_prefix", None)) or (sys.prefix != getattr(sys, "base_prefix", sys.prefix))
 
 # ---------- commands ----------
 
@@ -813,6 +826,63 @@ def cmd_cfg(args: List[str]) -> int:
         print("  {}")
     return 0
 
+def cmd_self_check(args: List[str]) -> int:
+    as_json = "--json" in args
+    pipx_path = shutil.which("pipx")
+    vybe_path = shutil.which("vybe")
+    in_repo = (Path.cwd() / "pyproject.toml").exists() and (Path.cwd() / "src" / "vybe").exists()
+    externally_managed = _is_externally_managed_python()
+    in_venv = _in_virtualenv()
+
+    recommendations: List[str] = []
+    if externally_managed and not in_venv:
+        recommendations.append("Detected externally-managed system Python (PEP 668).")
+        if pipx_path:
+            if in_repo:
+                recommendations.append("Install/upgrade from this repo with: pipx install . --force")
+            else:
+                recommendations.append("Install with: pipx install vybe")
+            recommendations.append("Upgrade later with: pipx upgrade vybe")
+        else:
+            recommendations.append("Install pipx first (e.g. apt install pipx), then use pipx install vybe.")
+            if in_repo:
+                recommendations.append("From this repo, use: pipx install . --force")
+        recommendations.append("Alternative: use a virtualenv and install with pip inside that venv.")
+    else:
+        if in_venv:
+            recommendations.append("Running inside a virtualenv. Install/update with: pip install -U vybe")
+        else:
+            recommendations.append("Python environment appears pip-installable. Install/update with: pip install -U vybe")
+
+    payload = {
+        "tool": APP,
+        "version": __version__,
+        "python_executable": sys.executable,
+        "python_version": sys.version.split()[0],
+        "externally_managed": externally_managed,
+        "in_virtualenv": in_venv,
+        "pipx_available": bool(pipx_path),
+        "pipx_path": pipx_path,
+        "vybe_path": vybe_path,
+        "cwd": str(Path.cwd()),
+        "in_repo_checkout": in_repo,
+        "recommendations": recommendations,
+    }
+    if as_json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+
+    print(f"vybe self-check (v{__version__})")
+    print(f"python: {payload['python_version']} ({payload['python_executable']})")
+    print(f"externally_managed: {'yes' if externally_managed else 'no'}")
+    print(f"in_virtualenv: {'yes' if in_venv else 'no'}")
+    print(f"pipx: {pipx_path or 'missing'}")
+    print(f"vybe_path: {vybe_path or 'not found'}")
+    print("recommendations:")
+    for rec in recommendations:
+        print(f"  - {rec}")
+    return 0
+
 def cmd_init(args: List[str]) -> int:
     force = "--force" in args
     ensure_dirs()
@@ -1090,6 +1160,8 @@ Commands:
   vybe share [--full] [--redact] [--errors] [--json] [--clip]
                            Build a Markdown share bundle from latest capture
   vybe doctor [--json]     Print environment/debug snapshot
+  vybe self-check [--json]
+                           Check install environment and print update guidance
   vybe cfg [--json]        Print current config and effective paths
   vybe init [--force]      Initialize ~/.config/vybe defaults
   vybe completion install <zsh|bash|fish>
@@ -1147,6 +1219,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "diff": cmd_diff,
         "share": cmd_share,
         "doctor": cmd_doctor,
+        "self-check": cmd_self_check,
         "cfg": cmd_cfg,
         "init": cmd_init,
         "completion": cmd_completion,

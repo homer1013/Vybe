@@ -8,7 +8,7 @@ This file defines the stability contract for human users, scripts, and coding ag
 
 ## Stable commands and aliases
 - Core: `run`, `retry`, `last`, `snip`, `snipclip`, `ls`, `grep`, `md`, `clip`, `fail`
-- Agent/support: `errors`, `export`, `diff`, `share`, `doctor`, `cfg`, `init`, `completion`, `tags`, `pane`
+- Agent/support: `errors`, `export`, `diff`, `share`, `doctor`, `self-check`, `cfg`, `init`, `completion`, `tags`, `pane`
 - Aliases: `r`, `rr`, `l`, `s`, `sc`, `o`, `ll`
 
 ## Stable flags
@@ -20,6 +20,7 @@ This file defines the stability contract for human users, scripts, and coding ag
 - `diff`: `--full`, `--tag <name>`
 - `share`: `--full`, `--redact`, `--errors`, `--json`, `--clip`
 - `doctor`: `--json`
+- `self-check`: `--json`
 - `cfg`: `--json`
 - `init`: `--force`
 - `completion`: `install <zsh|bash|fish>`
@@ -30,6 +31,7 @@ This file defines the stability contract for human users, scripts, and coding ag
   - New keys may be added.
 - `share --json` is machine-readable JSON with the same compatibility rule.
 - `doctor --json` is machine-readable JSON with the same compatibility rule.
+- `self-check --json` is machine-readable JSON with the same compatibility rule.
 - `cfg --json` is machine-readable JSON with the same compatibility rule.
 - Human-readable outputs may gain extra lines, but command meaning remains stable.
 

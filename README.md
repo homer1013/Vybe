@@ -34,6 +34,26 @@ vybe --help
 python -m vybe --help
 ```
 
+## Install (recommended on Kali/Ubuntu)
+Use `pipx` to avoid PEP 668 "externally-managed-environment" issues:
+```bash
+sudo apt install pipx
+pipx ensurepath
+pipx install vybe
+```
+
+From a local checkout:
+```bash
+cd ~/dev/Vybe
+pipx install . --force
+```
+
+Check install/update guidance:
+```bash
+vybe self-check
+vybe self-check --json
+```
+
 ## Usage
 ```bash
 vybe run pytest -q
@@ -56,6 +76,7 @@ vybe share --clip
 vybe share --json
 vybe share --json --errors --redact
 vybe doctor
+vybe self-check
 vybe cfg
 vybe init
 vybe completion install zsh
@@ -137,6 +158,8 @@ Get quick environment diagnostics:
 ```bash
 vybe doctor
 vybe doctor --json
+vybe self-check
+vybe self-check --json
 vybe cfg --json
 vybe init
 ```
