@@ -1,11 +1,11 @@
 # Vybe
 
 ```text
-  ____   ____       ___
-  \   \ /   /___ __ | |__   ____
-   \   Y   /(   |  || __ \ / __ \
-    \     /  \___  || \_\ \  ___/
-     \___/   (_____||_____/\____)
+  ____   ____       _
+  \   \ /   /__ __ | |__   ____
+   \   Y   /|  |  ||  _  \/ __ \
+    \     / _\    || |_)  |  __/
+     \___/ (_____/ |_____/\____)  
 ```
 
 Vybe is a **vibe coding terminal toolkit**: run a command, capture its output, and instantly reuse it —
