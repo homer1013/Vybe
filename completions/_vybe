@@ -1,0 +1,29 @@
+#compdef vybe
+# zsh completion for vybe
+local -a commands
+commands=(
+  "run:Run command and capture output"
+  "last:Print most recent capture"
+  "snip:Print output only (strip header)"
+  "snipclip:Copy output only to clipboard"
+  "tail:Tail most recent capture"
+  "open:Open most recent capture in pager"
+  "ls:List captures"
+  "grep:Grep most recent capture"
+  "md:Wrap capture in Markdown fences"
+  "clip:Copy most recent capture to clipboard"
+  "fail:Select most recent failing run"
+  "pane:Capture tmux pane scrollback"
+  "version:Print version"
+  "help:Show help"
+)
+_arguments -C   '1:command:->cmds'   '*::arg:->args'
+
+case $state in
+  cmds)
+    _describe -t commands 'vybe commands' commands
+  ;;
+  args)
+    # basic completion: nothing fancy yet
+  ;;
+esac
