@@ -54,6 +54,22 @@ vybe self-check
 vybe self-check --json
 ```
 
+## Publishing (maintainers)
+Vybe publishes to PyPI from GitHub tags via Trusted Publishing.
+
+One-time setup in PyPI project settings:
+- Add a Trusted Publisher for repo `homer1013/Vybe`
+- Workflow file: `.github/workflows/publish.yml`
+- Environment: `pypi`
+
+Release flow:
+```bash
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+GitHub Actions will build and publish automatically.
+
 ## Usage
 ```bash
 vybe run pytest -q
