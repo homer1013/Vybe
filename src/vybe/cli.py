@@ -1215,10 +1215,11 @@ def cmd_history(args: List[str]) -> int:
     """Copy last N commands with outputs together for bulk LLM handoff."""
     redact = "--redact" in args
     as_json = "--json" in args
+    print_only = "--print" in args  # For testing: print instead of copy
     n = 3
     
     for arg in args:
-        if arg not in ("--redact", "--json"):
+        if arg not in ("--redact", "--json", "--print"):
             try:
                 n = int(arg)
                 break
@@ -1298,6 +1299,11 @@ def cmd_history(args: List[str]) -> int:
                 "",
             ])
         text_out = "\n".join(lines)
+    
+    if print_only:
+        # For testing: just print to stdout
+        print(text_out)
+        return 0
     
     rc_clip = _clipboard_write_bytes(text_out.encode("utf-8", errors="replace"))
     if rc_clip == 0:
