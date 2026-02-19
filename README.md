@@ -27,18 +27,36 @@ With Vybe:
 - `vybe rr` retry quickly
 
 ## Highlights
+
+**Core Capture & Replay:**
 - **`vybe run ...`** streams output live *and* saves it.
-- **`vybe retry`** reruns your last `vybe run` command.
-- **`vybe snipclip`** copies *output only* (perfect for issues/ChatGPT).
-- **`vybe snipclip --redact`** copies output with common secrets masked.
+- **`vybe retry`** / **`vybe rr`** reruns your last command.
+- **`vybe snipclip`** / **`vybe sc`** copies output only (perfect for issues/LLM chats).
+- **`vybe snipclip --redact`** masks common secrets automatically.
+
+**LLM Workflow (v1.0.0+):**
+- **`vybe cc`** copy just the command to clipboard (for tweaking).
+- **`vybe history [N]`** bulk grab last N runs for LLM handoff.
+- **`vybe select`** interactive fzf picker for multi-select captures.
+
+**Analysis & Discovery:**
 - **`vybe errors`** extracts likely error blocks from latest capture.
-- **`vybe export --last --json`** emits machine-readable context for agents.
-- **`vybe run --tag <name>`** groups captures by task/session.
-- **`vybe diff`** shows what changed between your latest two captures.
-- **`vybe share`** builds a Markdown-ready report for issues/LLM chats.
-- **`vybe prompt`** generates LLM-ready prompts for debug/review/explain workflows.
-- **`vybe doctor`** prints a fast environment snapshot for debugging setup issues.
-- **`vybe fail`** jumps back to the most recent failing run.
+- **`vybe stats`** show success rates, most-run commands, slowest runs.
+- **`vybe fail`** jump back to most recent failing run.
+- **`vybe diff`** show what changed between latest two captures.
+
+**Advanced Workflows:**
+- **`vybe flow`** save and replay command sequences.
+- **`vybe watch`** auto-rerun on file changes.
+- **`vybe cwd`** remember/restore working directory.
+- **`vybe clean`** cleanup old captures by age/count.
+- **`vybe man`** comprehensive 601-line manual with all commands.
+
+**Export & Share:**
+- **`vybe export --last --json`** machine-readable context for agents.
+- **`vybe share`** builds Markdown-ready report for issues.
+- **`vybe prompt`** generates LLM-ready prompts (debug/review/explain).
+- **`vybe doctor`** fast environment snapshot.
 - Works great on Kali (zsh) and supports tmux scrollback capture.
 
 ## Demo
@@ -101,56 +119,98 @@ GitHub Actions will build and publish automatically.
 
 ## Usage
 ```bash
+# Capture & replay
 vybe run pytest -q
-vybe retry
 vybe r pytest -q
-vybe run --tag auth pytest -q
+vybe retry
+vybe rr
 vybe rr --cwd
+
+# Output & clipboard
+vybe snip
+vybe snipclip
+vybe snipclip --redact
+vybe cc              # Copy just command
+vybe history 3       # Bulk grab 3 runs for LLM
+vybe select          # Interactive picker (fzf)
+
+# Analysis
 vybe fail
-vybe s
-vybe sc
-vybe sc --redact
+vybe errors
+vybe stats           # Success rates, patterns
+vybe tail 50
+vybe grep "Traceback|ERROR" --i
+
+# Navigation & filtering
+vybe ls
 vybe ll 5
 vybe ls --tag auth
-vybe snipclip
-vybe errors
-vybe export --last --json --snip
+vybe open
+
+# Workflows
+vybe flow save test-run      # Save sequence
+vybe flow list
+vybe flow run test-run
+vybe watch pytest -q         # Auto-rerun on changes
+vybe cwd set                 # Save working dir
+vybe cwd run                 # Restore & run
+vybe clean --keep 10         # Cleanup old
+
+# Diff & tagging
 vybe diff
-vybe share --redact --errors
-vybe share --clip
+vybe diff --tag auth
+vybe run --tag auth pytest -q
+
+# Export & share
+vybe export --last --json --snip --redact
+vybe share --redact --errors --clip
 vybe share --json
-vybe share --json --errors --redact
 vybe prompt debug --redact
-vybe prompt review
-vybe prompt explain
+
+# System & help
+vybe man             # Read comprehensive manual
 vybe doctor
 vybe self-check
 vybe cfg
 vybe init
 vybe completion install zsh
 vybe md bash
-vybe grep "Traceback|ERROR" --i
 ```
 
 ## Speed aliases
-- `vybe r ...` is the same as `vybe run ...`
-- `vybe rr` is the same as `vybe retry`
-- `vybe rr --cwd` retries in the original working directory
-- `vybe rr --tag <name>` retries and assigns a tag
-- `vybe l` is the same as `vybe last`
-- `vybe s` is the same as `vybe snip`
-- `vybe sc` is the same as `vybe snipclip`
-- `vybe o` is the same as `vybe open`
-- `vybe ll [N]` is the same as `vybe ls [N]`
+- `vybe r <cmd>` → `vybe run <cmd>`
+- `vybe rr [--cwd] [--tag <name>]` → `vybe retry [--cwd] [--tag <name>]`
+- `vybe l` → `vybe last`
+- `vybe s` → `vybe snip`
+- `vybe sc` → `vybe snipclip`
+- `vybe cc` → `vybe cmdcopy`
+- `vybe o` → `vybe open`
+- `vybe ll [N]` → `vybe ls [N]`
 - Full commands remain the canonical docs and are recommended in scripts/automation
 
 ## Quick recipes
+
 Fast debug loop:
 ```bash
 vybe r pytest -q
 vybe errors
 vybe share --redact --errors --clip
 vybe rr
+```
+
+LLM Handoff (v1.0.0+):
+```bash
+vybe r pytest -q
+vybe history 3 --redact     # Grab last 3 runs
+vybe prompt debug --redact  # Generate LLM prompt
+```
+
+Interactive multi-run selection:
+```bash
+vybe r pytest test1
+vybe r pytest test2
+vybe r pytest test3
+vybe select                 # Pick which ones to copy
 ```
 
 Tagged task loop:
