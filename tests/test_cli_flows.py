@@ -184,6 +184,56 @@ class VybeCliFlowsTest(unittest.TestCase):
         self.assertIn("ValueError: boom", prompt.stdout)
         self.assertIn("## Response format", prompt.stdout)
 
+    def test_new_commands_basic(self):
+        # Test cmdcopy
+        run1 = run_vybe(["r", sys.executable, "-c", "print('hello')"], self.base_env)
+        self.assertEqual(run1.returncode, 0)
+        
+        cc = run_vybe(["cc"], self.base_env)
+        self.assertEqual(cc.returncode, 0)
+        self.assertIn("Copied command", cc.stdout)
+        
+        # Test history
+        history = run_vybe(["history", "1"], self.base_env)
+        self.assertEqual(history.returncode, 0)
+        self.assertIn("hello", history.stdout)
+        
+        # Test stats
+        stats = run_vybe(["stats"], self.base_env)
+        self.assertEqual(stats.returncode, 0)
+        self.assertIn("Total runs:", stats.stdout)
+        
+        # Test clean (should not crash)
+        clean = run_vybe(["clean", "--keep", "10"], self.base_env)
+        self.assertEqual(clean.returncode, 0)
+        
+        # Test cwd set
+        cwd_set = run_vybe(["cwd", "set"], self.base_env)
+        self.assertEqual(cwd_set.returncode, 0)
+        self.assertIn("Saved working directory", cwd_set.stdout)
+        
+        # Test cwd run
+        cwd_run = run_vybe(["cwd", "run"], self.base_env)
+        self.assertEqual(cwd_run.returncode, 0)
+
+    def test_flow_basic(self):
+        # Save a flow
+        flow_save = run_vybe(["flow", "save", "test-flow", "echo", "test"], self.base_env)
+        self.assertEqual(flow_save.returncode, 0)
+        self.assertIn("Saved flow", flow_save.stdout)
+        
+        # List flows
+        flow_list = run_vybe(["flow", "list"], self.base_env)
+        self.assertEqual(flow_list.returncode, 0)
+        self.assertIn("test-flow", flow_list.stdout)
+
+    def test_help_variations(self):
+        # Test all help variations
+        for help_arg in ["-h", "--help", "-H", "-Help", "-HELP", "help", "HELP"]:
+            result = run_vybe([help_arg], self.base_env)
+            self.assertEqual(result.returncode, 0, f"Failed for {help_arg}")
+            self.assertIn("vybe - vibe coding terminal capture toolkit", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

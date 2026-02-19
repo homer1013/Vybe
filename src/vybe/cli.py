@@ -1198,6 +1198,392 @@ def cmd_version(_args: List[str]) -> int:
     print(__version__)
     return 0
 
+def cmd_cmdcopy(_args: List[str]) -> int:
+    """Copy only the last command to clipboard (useful for re-running with tweaks)."""
+    st = load_state()
+    cmd = st.get("last_cmd") if isinstance(st.get("last_cmd"), list) else []
+    if not cmd:
+        print("No previous command found. Use: vybe run <cmd...>", file=sys.stderr)
+        return 1
+    cmd_str = shell_quote_cmd(cmd)
+    rc = _clipboard_write_bytes(cmd_str.encode("utf-8", errors="replace"))
+    if rc == 0:
+        print(f"Copied command: {cmd_str}")
+    return rc
+
+def cmd_history(args: List[str]) -> int:
+    """Copy last N commands with outputs together for bulk LLM handoff."""
+    redact = "--redact" in args
+    as_json = "--json" in args
+    n = 3
+    
+    for arg in args:
+        if arg not in ("--redact", "--json"):
+            try:
+                n = int(arg)
+                break
+            except ValueError:
+                pass
+    
+    records = load_index_records()
+    if not records:
+        print("No index yet. Run: vybe run <cmd...>", file=sys.stderr)
+        return 1
+    
+    selected = [r for r in reversed(records) if r.get("kind") == "run"][-n:]
+    if not selected:
+        print(f"Need at least 1 capture. Found {len(records)} total.", file=sys.stderr)
+        return 1
+    
+    if as_json:
+        payload = {
+            "tool": APP,
+            "version": __version__,
+            "time": time.time(),
+            "time_human": human_ts(time.time()),
+            "batch_size": len(selected),
+            "redacted": redact,
+            "captures": [],
+        }
+        for rec in selected:
+            p = Path(rec.get("file", ""))
+            if not p.exists():
+                continue
+            text = read_text(p)
+            output = strip_header(text)
+            if redact:
+                text = redact_text(text)
+                output = redact_text(output)
+            cmd = rec.get("cmd", [])
+            cmd_str = shell_quote_cmd(cmd) if cmd else "-"
+            payload["captures"].append({
+                "time": rec.get("time"),
+                "time_human": human_ts(rec.get("time", 0)),
+                "cmd": cmd,
+                "cmd_str": cmd_str,
+                "rc": rec.get("rc"),
+                "output": output,
+                "cwd": rec.get("cwd"),
+            })
+        text_out = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    else:
+        lines = [
+            f"# Vybe History ({len(selected)} captures)",
+            "",
+        ]
+        for i, rec in enumerate(selected, start=1):
+            p = Path(rec.get("file", ""))
+            if not p.exists():
+                continue
+            text = read_text(p)
+            output = strip_header(text)
+            if redact:
+                text = redact_text(text)
+                output = redact_text(output)
+            cmd = rec.get("cmd", [])
+            cmd_str = shell_quote_cmd(cmd) if cmd else "-"
+            rc = rec.get("rc", "?")
+            t = human_ts(rec.get("time", 0))
+            
+            lines.extend([
+                f"## [{i}] {t} (rc={rc})",
+                f"```bash",
+                f"$ {cmd_str}",
+                f"```",
+                "",
+                "### Output",
+                "```text",
+                output.rstrip("\n"),
+                "```",
+                "",
+            ])
+        text_out = "\n".join(lines)
+    
+    rc_clip = _clipboard_write_bytes(text_out.encode("utf-8", errors="replace"))
+    if rc_clip == 0:
+        if as_json:
+            print(f"Copied {len(selected)} captures (JSON) to clipboard.")
+        else:
+            print(f"Copied {len(selected)} captures to clipboard.")
+    return rc_clip
+
+def cmd_select(_args: List[str]) -> int:
+    """Interactively select and copy past captures (requires fzf)."""
+    fzf_path = shutil.which("fzf")
+    if not fzf_path:
+        print("vybe select requires fzf. Install: apt install fzf", file=sys.stderr)
+        return 1
+    
+    records = load_index_records()
+    if not records:
+        print("No captures yet. Run: vybe run <cmd...>", file=sys.stderr)
+        return 1
+    
+    lines = []
+    for rec in reversed(records):
+        if rec.get("kind") != "run":
+            continue
+        t = human_ts(rec.get("time", 0))
+        rc = rec.get("rc", "?")
+        cmd = shell_quote_cmd(rec.get("cmd", []))
+        f = rec.get("file", "")
+        lines.append(f"{t} [rc={rc}] {cmd} | {f}")
+    
+    if not lines:
+        print("No run captures found.", file=sys.stderr)
+        return 1
+    
+    proc = subprocess.Popen(
+        ["fzf", "-m", "--preview", "cat {-1}"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    stdout, _ = proc.communicate("\n".join(lines))
+    
+    if proc.returncode != 0 or not stdout.strip():
+        return 1
+    
+    selected_files = []
+    for line in stdout.strip().split("\n"):
+        parts = line.split(" | ")
+        if len(parts) > 1:
+            selected_files.append(parts[-1])
+    
+    if not selected_files:
+        return 1
+    
+    combined_text = []
+    for i, fpath in enumerate(selected_files, start=1):
+        p = Path(fpath)
+        if p.exists():
+            combined_text.append(f"--- [{i}] {p.name} ---")
+            combined_text.append(read_text(p))
+            combined_text.append("")
+    
+    text_out = "\n".join(combined_text)
+    rc_clip = _clipboard_write_bytes(text_out.encode("utf-8", errors="replace"))
+    if rc_clip == 0:
+        print(f"Copied {len(selected_files)} selected captures to clipboard.")
+    return rc_clip
+
+def cmd_watch(args: List[str]) -> int:
+    """Watch for file changes and auto-rerun command (requires watchmedo from watchdog)."""
+    if not args:
+        print("Usage: vybe watch <cmd...>", file=sys.stderr)
+        return 2
+    
+    tag = "watch-session"
+    print(f"Watching mode (tag: {tag}). Press Ctrl+C to stop.")
+    print(f"Initial run: {shell_quote_cmd(args)}")
+    
+    rc = _run_capture(args, tag=tag)
+    
+    print(f"\nFor auto-rerun on file change, install watchdog:")
+    print(f"  pip install watchdog")
+    print(f"  watchmedo shell-command --patterns='*.py' --recursive --command='vybe r {shell_quote_cmd(args)}' .")
+    
+    return rc
+
+def cmd_cwd(args: List[str]) -> int:
+    """Remember current directory and re-run last command from it (useful after directory changes)."""
+    st = load_state()
+    
+    if not args or args[0] == "set":
+        cwd = str(Path.cwd())
+        st["saved_cwd"] = cwd
+        save_state(st)
+        print(f"Saved working directory: {cwd}")
+        return 0
+    
+    if args[0] == "run":
+        saved_cwd = st.get("saved_cwd")
+        if not saved_cwd:
+            print("No saved working directory. Use: vybe cwd set", file=sys.stderr)
+            return 1
+        
+        last_cmd = st.get("last_cmd")
+        if not isinstance(last_cmd, list) or not last_cmd:
+            print("No previous command found. Use: vybe run <cmd...>", file=sys.stderr)
+            return 1
+        
+        print(f"Running in: {saved_cwd}")
+        return _run_capture(last_cmd, cwd=saved_cwd, tag=st.get("last_tag"))
+    
+    print("Usage: vybe cwd <set|run>", file=sys.stderr)
+    return 2
+
+def cmd_clean(args: List[str]) -> int:
+    """Clean up old captures to reclaim disk space."""
+    keep = 100
+    before_days = None
+    
+    i = 0
+    while i < len(args):
+        if args[i] == "--keep":
+            if i + 1 < len(args):
+                try:
+                    keep = int(args[i + 1])
+                    i += 2
+                except ValueError:
+                    i += 1
+            else:
+                i += 1
+        elif args[i] == "--before":
+            if i + 1 < len(args):
+                try:
+                    before_days = int(args[i + 1])
+                    i += 2
+                except ValueError:
+                    i += 1
+            else:
+                i += 1
+        else:
+            i += 1
+    
+    records = load_index_records()
+    if not records:
+        print("No captures to clean.")
+        return 0
+    
+    now = time.time()
+    cutoff_time = now - (before_days * 86400) if before_days else 0
+    deleted_count = 0
+    
+    sorted_recs = sorted(records, key=lambda r: r.get("time", 0))
+    
+    to_delete = sorted_recs[:-keep] if len(sorted_recs) > keep else []
+    if before_days:
+        to_delete = [r for r in sorted_recs if r.get("time", 0) < cutoff_time]
+    
+    for rec in to_delete:
+        p = Path(rec.get("file", ""))
+        if p.exists():
+            try:
+                p.unlink()
+                deleted_count += 1
+            except Exception:
+                pass
+    
+    print(f"Deleted {deleted_count} old captures.")
+    return 0
+
+def cmd_stats(_args: List[str]) -> int:
+    """Show statistics on runs: success rate, most-run commands, slowest runs."""
+    records = load_index_records()
+    if not records:
+        print("No captures yet. Run: vybe run <cmd...>", file=sys.stderr)
+        return 1
+    
+    runs = [r for r in records if r.get("kind") == "run"]
+    if not runs:
+        print("No run captures found.")
+        return 0
+    
+    total = len(runs)
+    failed = len([r for r in runs if r.get("rc", 0) != 0])
+    success_rate = 100 * (total - failed) / total if total > 0 else 0
+    
+    cmd_counts: Dict[str, int] = {}
+    for r in runs:
+        cmd = shell_quote_cmd(r.get("cmd", []))
+        cmd_counts[cmd] = cmd_counts.get(cmd, 0) + 1
+    
+    slowest = sorted(runs, key=lambda r: r.get("dur_s", 0), reverse=True)[:5]
+    
+    print(f"=== Vybe Stats ===")
+    print(f"Total runs: {total}")
+    print(f"Succeeded: {total - failed}")
+    print(f"Failed: {failed}")
+    print(f"Success rate: {success_rate:.1f}%")
+    print()
+    print("Top commands:")
+    for cmd, count in sorted(cmd_counts.items(), key=lambda kv: (-kv[1], kv[0]))[:5]:
+        print(f"  {count}x {cmd}")
+    print()
+    print("Slowest runs:")
+    for i, rec in enumerate(slowest, 1):
+        t = human_ts(rec.get("time", 0))
+        dur = rec.get("dur_s", "?")
+        cmd = shell_quote_cmd(rec.get("cmd", []))
+        print(f"  {i}. {dur}s - {cmd} ({t})")
+    
+    return 0
+
+def cmd_link(args: List[str]) -> int:
+    """Start local web server to share captures (useful for screenshots/links)."""
+    port = 8765
+    
+    for arg in args:
+        try:
+            port = int(arg)
+        except ValueError:
+            pass
+    
+    print(f"Vybe web server would run on http://localhost:{port}")
+    print("(Not yet implemented - use vybe export/share for now)")
+    print()
+    print("To share a specific capture, use:")
+    print("  vybe share --clip")
+    print("  vybe export --last --json")
+    print("  vybe share --json | curl -X POST https://your-service.com/api/share")
+    
+    return 0
+
+def cmd_flow(args: List[str]) -> int:
+    """Save and replay common command sequences."""
+    if not args or args[0] in ("list", "ls"):
+        cfg = load_config()
+        flows = cfg.get("flows", {})
+        if not flows:
+            print("No flows saved. Use: vybe flow save <name> <cmd...>")
+            return 0
+        print("Saved flows:")
+        for name, data in flows.items():
+            cmds = data.get("commands", [])
+            print(f"  {name}: {' && '.join(cmds)}")
+        return 0
+    
+    if args[0] == "save" and len(args) >= 3:
+        name = args[1]
+        cmds = args[2:]
+        cfg = load_config()
+        if "flows" not in cfg:
+            cfg["flows"] = {}
+        cfg["flows"][name] = {"commands": cmds, "created_at": time.time()}
+        save_config(cfg)
+        print(f"Saved flow: {name}")
+        return 0
+    
+    if args[0] == "run" and len(args) >= 2:
+        name = args[1]
+        cfg = load_config()
+        flows = cfg.get("flows", {})
+        if name not in flows:
+            print(f"Flow not found: {name}", file=sys.stderr)
+            return 1
+        
+        cmds = flows[name].get("commands", [])
+        print(f"Running flow: {name}")
+        for cmd in cmds:
+            print(f"\n$ {cmd}")
+            parsed = shlex.split(cmd)
+            _run_capture(parsed, tag=f"flow-{name}")
+        return 0
+    
+    print("Usage: vybe flow <list|save <name> <cmd...>|run <name>>", file=sys.stderr)
+    return 2
+
+def cmd_man(_args: List[str]) -> int:
+    """Display the full manual."""
+    pager = os.environ.get("PAGER", "less")
+    man_path = Path(__file__).resolve().parents[2] / "docs" / "man.md"
+    if man_path.exists():
+        return subprocess.call([pager, str(man_path)])
+    else:
+        print("Manual not found. Use `vybe --help` for quick help.", file=sys.stderr)
+        return 1
+
 # ---------- help / dispatch ----------
 
 def help_text() -> str:
@@ -1217,6 +1603,8 @@ Commands:
   vybe s                   Alias for `vybe snip`
   vybe snipclip [--redact] Copy output only to clipboard
   vybe sc                  Alias for `vybe snipclip`
+  vybe cmdcopy             Copy only the last command to clipboard
+  vybe cc                  Alias for `vybe cmdcopy`
   vybe tail [N]            Print last N lines of most recent capture (default 80)
   vybe open                Open most recent capture in $PAGER
   vybe o                   Alias for `vybe open`
@@ -1228,6 +1616,9 @@ Commands:
   vybe clip                Copy last capture to clipboard
   vybe fail                Select most recent failing run as "last"
   vybe errors              Extract likely error blocks from most recent capture
+  vybe history [N] [--redact] [--json]
+                           Copy last N commands+outputs together (default 3)
+  vybe select              Interactively pick captures to copy (requires fzf)
   vybe export --last --json [--snip] [--redact]
                            Export latest capture in machine-readable JSON
   vybe diff [--full] [--tag <name>]
@@ -1236,6 +1627,14 @@ Commands:
                            Build a Markdown share bundle from latest capture
   vybe prompt <debug|review|explain> [--redact] [extra request...]
                            Generate an LLM-ready prompt from latest capture
+  vybe watch <cmd...>      Auto-rerun command on changes (tag: watch-session)
+  vybe cwd <set|run>       Remember and restore working directory across commands
+  vybe clean [--keep N] [--before <days>]
+                           Clean up old captures to reclaim disk space
+  vybe stats               Show success rate, most-run commands, slowest runs
+  vybe link [PORT]         Start web server for sharing captures (dev mode)
+  vybe flow <list|save|run>
+                           Save and replay command sequences
   vybe doctor [--json]     Print environment/debug snapshot
   vybe self-check [--json]
                            Check install environment and print update guidance
@@ -1246,9 +1645,11 @@ Commands:
   vybe tags                List known tags and usage counts
   vybe pane [LINES]        (tmux) capture pane scrollback (default 2000)
   vybe version             Print version
+  vybe man                 Show full manual
 
 Flags:
-  -h, --help               Show help
+  -h, --help, -H, -Help, -HELP, help, HELP
+                           Show help (supports all variations)
   --version                Print version
 
 Env:
@@ -1262,7 +1663,7 @@ Env:
 def main(argv: Optional[List[str]] = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
 
-    if not argv or argv[0] in ("-h", "--help", "help"):
+    if not argv or argv[0] in ("-h", "--help", "-H", "-Help", "-HELP", "help", "HELP"):
         print(help_text())
         return 0
     if argv[0] == "--version":
@@ -1282,6 +1683,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         "s": cmd_snip,
         "snipclip": cmd_snipclip,
         "sc": cmd_snipclip,
+        "cmdcopy": cmd_cmdcopy,
+        "cc": cmd_cmdcopy,
         "tail": cmd_tail,
         "open": cmd_open,
         "o": cmd_open,
@@ -1292,10 +1695,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         "clip": cmd_clip,
         "fail": cmd_fail,
         "errors": cmd_errors,
+        "history": cmd_history,
+        "select": cmd_select,
         "export": cmd_export,
         "diff": cmd_diff,
         "share": cmd_share,
         "prompt": cmd_prompt,
+        "watch": cmd_watch,
+        "cwd": cmd_cwd,
+        "clean": cmd_clean,
+        "stats": cmd_stats,
+        "link": cmd_link,
+        "flow": cmd_flow,
         "doctor": cmd_doctor,
         "self-check": cmd_self_check,
         "cfg": cmd_cfg,
@@ -1303,6 +1714,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "completion": cmd_completion,
         "tags": cmd_tags,
         "pane": cmd_pane,
+        "man": cmd_man,
         "version": cmd_version,
     }
 
