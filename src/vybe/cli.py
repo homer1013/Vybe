@@ -1577,12 +1577,18 @@ def cmd_flow(args: List[str]) -> int:
 def cmd_man(_args: List[str]) -> int:
     """Display the full manual."""
     pager = os.environ.get("PAGER", "less")
-    man_path = Path(__file__).resolve().parents[2] / "docs" / "man.md"
-    if man_path.exists():
-        return subprocess.call([pager, str(man_path)])
-    else:
-        print("Manual not found. Use `vybe --help` for quick help.", file=sys.stderr)
-        return 1
+    # Try multiple locations for the manual
+    possible_paths = [
+        Path(__file__).resolve().parent / "man.md",  # in package
+        Path(__file__).resolve().parents[2] / "docs" / "man.md",  # dev mode
+        Path("/usr/share/doc/vybe/man.md"),  # system install
+        Path("/usr/local/share/doc/vybe/man.md"),  # local system install
+    ]
+    for man_path in possible_paths:
+        if man_path.exists():
+            return subprocess.call([pager, str(man_path)])
+    print("Manual not found. Use `vybe --help` for quick help.", file=sys.stderr)
+    return 1
 
 # ---------- help / dispatch ----------
 

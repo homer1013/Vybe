@@ -13,3 +13,6 @@ requires-python = ">=3.8"
 
 [project.scripts]
 vybe = "vybe.cli:main"
+
+[tool.setuptools.package-data]
+vybe = ["man.md"]
