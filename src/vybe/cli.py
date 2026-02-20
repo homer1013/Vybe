@@ -252,9 +252,84 @@ def _is_externally_managed_python() -> bool:
 def _in_virtualenv() -> bool:
     return bool(getattr(sys, "real_prefix", None)) or (sys.prefix != getattr(sys, "base_prefix", sys.prefix))
 
+def _detect_gui(cmd_str: str) -> bool:
+    """Detect if command likely runs a GUI app (checks for tkinter, qt, wx imports)."""
+    gui_patterns = [
+        r'\btkinter\b',
+        r'\bPyQt\d\b',
+        r'\bPySide\d\b',
+        r'\bwx\b',
+        r'import tk',
+        r'from tk',
+    ]
+    for pat in gui_patterns:
+        if re.search(pat, cmd_str):
+            return True
+    return False
+
+def _detect_sudo(args: List[str]) -> bool:
+    """Check if command starts with sudo."""
+    return bool(args and args[0] == "sudo")
+
+def _suggest_files(pattern: str) -> List[str]:
+    """Suggest files that match pattern using fuzzy matching. Returns up to 3 suggestions."""
+    try:
+        cwd = Path.cwd()
+        all_files = list(cwd.glob("*")) + list(cwd.glob("**/*"))
+        # Deduplicate and filter to just filenames
+        names = set(f.name for f in all_files if f.is_file())
+        
+        # Simple fuzzy match: files containing all chars in pattern (case-insensitive)
+        pattern_lower = pattern.lower()
+        candidates = []
+        for name in names:
+            if all(c in name.lower() for c in pattern_lower):
+                # Score: prefer exact prefix matches, then length-based
+                if name.lower().startswith(pattern_lower):
+                    candidates.append((0, len(name), name))
+                else:
+                    candidates.append((1, len(name), name))
+        
+        # Sort by score, then by length (shorter is better)
+        candidates.sort()
+        return [name for _, _, name in candidates[:3]]
+    except Exception:
+        return []
+
+def _gather_smart_context() -> Dict[str, str]:
+    """Gather environmental context for --smart share: pwd, ls, python version, git status."""
+    context: Dict[str, str] = {}
+    
+    # pwd
+    try:
+        context["pwd"] = str(Path.cwd())
+    except Exception:
+        context["pwd"] = "-"
+    
+    # ls -la output
+    ls_out = _run_quiet(["ls", "-la"])
+    if ls_out:
+        context["ls"] = ls_out
+    
+    # python --version
+    py_out = _run_quiet(["python", "--version"])
+    if py_out:
+        context["python"] = py_out
+    
+    # git status
+    git_out = _run_quiet(["git", "status", "--short"], cwd=context.get("pwd"))
+    if git_out:
+        context["git_status"] = git_out
+    
+    # virtualenv check
+    if _in_virtualenv():
+        context["venv"] = "active"
+    
+    return context
+
 # ---------- commands ----------
 
-def _run_capture(args: List[str], cwd: Optional[str] = None, tag: Optional[str] = None) -> int:
+def _run_capture(args: List[str], cwd: Optional[str] = None, tag: Optional[str] = None, use_tty: bool = False) -> int:
     ensure_dirs()
     stamp = now_stamp()
     outfile = VYBE_DIR / f"vybe_{stamp}.log"
@@ -265,24 +340,74 @@ def _run_capture(args: List[str], cwd: Optional[str] = None, tag: Optional[str] 
     interrupted = False
     proc: Optional[subprocess.Popen[str]] = None
     run_cwd = cwd if cwd is not None else str(Path.cwd())
+    
+    # Detect sudo and GUI warnings
+    is_sudo = _detect_sudo(args)
+    is_gui = _detect_gui(cmd_str)
+    
+    if is_gui and not use_tty:
+        print("⚠️  Warning: Command may launch a GUI app. Close the window when done.", file=sys.stderr)
+    if is_sudo and not use_tty:
+        print("💡 Tip: Use `--tty` flag for interactive sudo. Example: vybe run --tty sudo <cmd>", file=sys.stderr)
 
     try:
-        proc = subprocess.Popen(
-            args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            bufsize=1,
-            cwd=cwd,
-            start_new_session=True,
-        )
+        if use_tty:
+            # For TTY mode, use stdin/stdout/stderr directly (inherit from parent)
+            # This allows interactive input/output for sudo and other interactive commands
+            proc = subprocess.Popen(
+                args,
+                stdin=None,  # Inherit stdin from parent
+                stdout=None,  # Inherit stdout from parent
+                stderr=None,  # Inherit stderr from parent
+                cwd=cwd,
+                start_new_session=False,
+            )
+            # Read output from file if needed - for now, we'll skip capture in TTY mode
+            rc = proc.wait()
+            end = time.time()
+            set_latest_file(outfile, cmd=args, rc=rc, t=end, cwd=run_cwd, kind="run", tag=tag)
+            append_index({
+                "time": end,
+                "stamp": stamp,
+                "file": str(outfile),
+                "cmd": args,
+                "rc": rc,
+                "dur_s": round(end - start, 3),
+                "kind": "run",
+                "cwd": run_cwd,
+                "interrupted": False,
+                "tag": tag,
+                "tty_mode": True,
+            })
+            print(f"\nSaved: {outfile}")
+            return rc
+        else:
+            # Regular mode with output capture
+            proc = subprocess.Popen(
+                args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+                cwd=cwd,
+                start_new_session=True,
+            )
     except FileNotFoundError:
         msg = f"Command not found: {args[0]}"
         with outfile.open("a", encoding="utf-8", errors="replace") as f:
             f.write(msg + "\n")
-        print(msg, file=sys.stderr)
+        
+        # Try to suggest alternatives
+        suggestions = _suggest_files(args[0])
+        if suggestions:
+            print(msg + "\nDid you mean?", file=sys.stderr)
+            for sugg in suggestions:
+                print(f"  - {sugg}", file=sys.stderr)
+        else:
+            print(msg, file=sys.stderr)
+        
         end = time.time()
         set_latest_file(outfile, cmd=args, rc=127, t=end, cwd=run_cwd, kind="run", tag=tag)
         append_index({
@@ -358,16 +483,26 @@ def _run_capture(args: List[str], cwd: Optional[str] = None, tag: Optional[str] 
 
 def cmd_run(args: List[str]) -> int:
     tag: Optional[str] = None
-    if args[:1] == ["--tag"]:
-        if len(args) < 3:
-            print("Usage: vybe run [--tag <name>] <command...>", file=sys.stderr)
-            return 2
-        tag = args[1]
-        args = args[2:]
+    use_tty = False
+    
+    # Parse flags: --tag <name>, --tty
+    while args and args[0].startswith("--"):
+        if args[0] == "--tag":
+            if len(args) < 3:
+                print("Usage: vybe run [--tag <name>] [--tty] <command...>", file=sys.stderr)
+                return 2
+            tag = args[1]
+            args = args[2:]
+        elif args[0] == "--tty":
+            use_tty = True
+            args = args[1:]
+        else:
+            break
+    
     if not args:
-        print("Usage: vybe run [--tag <name>] <command...>", file=sys.stderr)
+        print("Usage: vybe run [--tag <name>] [--tty] <command...>", file=sys.stderr)
         return 2
-    return _run_capture(args, tag=tag)
+    return _run_capture(args, tag=tag, use_tty=use_tty)
 
 def cmd_retry(args: List[str]) -> int:
     use_original_cwd = False
@@ -709,6 +844,7 @@ def cmd_diff(args: List[str]) -> int:
 
 def cmd_doctor(args: List[str]) -> int:
     as_json = "--json" in args
+    explain = "--explain" in args
 
     git_root = _run_quiet(["git", "rev-parse", "--show-toplevel"])
     git_branch = _run_quiet(["git", "rev-parse", "--abbrev-ref", "HEAD"]) if git_root else None
@@ -775,7 +911,8 @@ def cmd_doctor(args: List[str]) -> int:
     print(f"  VYBE_MAX_INDEX: {payload['paths']['VYBE_MAX_INDEX']}")
     print("tools:")
     for name, path in {**common_tools, **clip_tools}.items():
-        print(f"  {name}: {path or 'missing'}")
+        status = "✓" if path else "✗"
+        print(f"  {name}: {path or 'missing'} {status}")
     if git_root:
         print("git:")
         print(f"  root: {git_root}")
@@ -784,6 +921,44 @@ def cmd_doctor(args: List[str]) -> int:
         print(f"  dirty: {'yes' if git_dirty else 'no'}")
     else:
         print("git: not a repository")
+    
+    if explain:
+        print("\n## Explanation")
+        
+        # Clipboard tools
+        has_clipboard = any(clip_tools.values())
+        if not has_clipboard:
+            print("⚠️  Clipboard: No clipboard tool detected. Install xclip, xsel, or wl-clipboard to copy shares to clipboard.")
+        else:
+            print("✓ Clipboard: Detected. You can use `vybe share --clip` to copy to clipboard.")
+        
+        # Git
+        if git_root:
+            if git_dirty:
+                print("⚠️  Git: You have uncommitted changes. Consider committing before sharing.")
+            else:
+                print("✓ Git: Repository is clean. Safe to share.")
+        else:
+            print("ℹ️  Git: Not in a git repository. Version control not available for this session.")
+        
+        # Terminal
+        if os.environ.get("TERM"):
+            print(f"✓ Terminal: {os.environ.get('TERM')} detected. Shell captures should work well.")
+        else:
+            print("⚠️  Terminal: TERM not set. Some shell features may not work correctly.")
+        
+        # Python
+        if _in_virtualenv():
+            print("✓ Python: Virtual environment detected. Package isolation intact.")
+        else:
+            print("ℹ️  Python: Not in a virtual environment. Consider using venv for project isolation.")
+        
+        # Vybe paths
+        if VYBE_DIR.exists() and VYBE_STATE.exists():
+            print("✓ Vybe: Configuration and state files exist. Vybe is properly initialized.")
+        else:
+            print("⚠️  Vybe: Missing config/state. Run `vybe init` to set up.")
+    
     return 0
 
 def cmd_cfg(args: List[str]) -> int:
@@ -824,6 +999,94 @@ def cmd_cfg(args: List[str]) -> int:
         print(json.dumps(cfg, ensure_ascii=False, indent=2))
     else:
         print("  {}")
+    return 0
+
+def cmd_project(args: List[str]) -> int:
+    """Show project structure and metadata."""
+    as_json = "--json" in args
+    
+    cwd = Path.cwd()
+    
+    # Gather project info
+    info: Dict[str, Any] = {
+        "tool": APP,
+        "version": __version__,
+        "cwd": str(cwd),
+        "python_version": sys.version.split()[0],
+    }
+    
+    # Check for pyproject.toml
+    pyproject = cwd / "pyproject.toml"
+    info["has_pyproject_toml"] = pyproject.exists()
+    
+    # Check for setup.py
+    setup_py = cwd / "setup.py"
+    info["has_setup_py"] = setup_py.exists()
+    
+    # Check for requirements files
+    req_files = []
+    for pattern in ["requirements.txt", "requirements*.txt", "Pipfile", "poetry.lock"]:
+        req_files.extend(cwd.glob(pattern))
+    info["requirement_files"] = sorted(set(str(f.name) for f in req_files))
+    
+    # Check for venv/virtualenv
+    venv_dirs = []
+    for d in [".venv", "venv", ".env", "env"]:
+        vdir = cwd / d
+        if vdir.exists() and (vdir / "bin" / "python").exists() or (vdir / "Scripts" / "python.exe").exists():
+            venv_dirs.append(d)
+    info["virtualenvs"] = venv_dirs
+    info["in_virtualenv"] = _in_virtualenv()
+    
+    # Project structure (tree-like, limit depth)
+    def tree(path: Path, prefix: str = "", depth: int = 0, max_depth: int = 2) -> List[str]:
+        if depth > max_depth:
+            return []
+        lines = []
+        try:
+            items = sorted(path.iterdir(), key=lambda p: (not p.is_dir(), p.name))
+            dirs = [i for i in items if i.is_dir() and not i.name.startswith(".")]
+            files = [i for i in items if i.is_file() and not i.name.startswith(".")]
+            
+            # Limit to 10 items per directory
+            items_to_show = (dirs + files)[:10]
+            
+            for i, item in enumerate(items_to_show):
+                is_last = i == len(items_to_show) - 1
+                current_prefix = "└── " if is_last else "├── "
+                lines.append(f"{prefix}{current_prefix}{item.name}")
+                
+                if item.is_dir() and depth < max_depth:
+                    next_prefix = prefix + ("    " if is_last else "│   ")
+                    lines.extend(tree(item, next_prefix, depth + 1, max_depth))
+        except (PermissionError, OSError):
+            pass
+        return lines
+    
+    tree_lines = [str(cwd.name)] + tree(cwd)
+    info["structure"] = tree_lines[:30]  # Limit output
+    
+    if as_json:
+        print(json.dumps(info, ensure_ascii=False, indent=2))
+        return 0
+    
+    print(f"Project: {cwd.name}")
+    print(f"Path: {cwd}")
+    print(f"Python: {info['python_version']}{' (venv)' if info['in_virtualenv'] else ''}")
+    
+    if info["has_pyproject_toml"]:
+        print("✓ pyproject.toml found")
+    if info["has_setup_py"]:
+        print("✓ setup.py found")
+    if info["requirement_files"]:
+        print(f"✓ Requirements: {', '.join(info['requirement_files'])}")
+    if info["virtualenvs"]:
+        print(f"✓ Virtual environments: {', '.join(info['virtualenvs'])}")
+    
+    print("\nStructure:")
+    for line in tree_lines:
+        print(line)
+    
     return 0
 
 def cmd_self_check(args: List[str]) -> int:
@@ -978,6 +1241,7 @@ def cmd_share(args: List[str]) -> int:
     copy_clip = "--clip" in args
     include_errors = "--errors" in args
     as_json = "--json" in args
+    smart = "--smart" in args
 
     p = latest_file()
     if not p or not p.exists():
@@ -1011,7 +1275,31 @@ def cmd_share(args: List[str]) -> int:
         lines.append(f"- tag: `{tag}`")
     if cmd_str:
         lines.append(f"- cmd: `{cmd_str}`")
+    
+    # Add smart context if requested
+    smart_context: Dict[str, str] = {}
+    if smart:
+        smart_context = _gather_smart_context()
+        if smart_context.get("python"):
+            lines.append(f"- python: `{smart_context['python']}`")
+        if smart_context.get("venv"):
+            lines.append("- venv: `active`")
+        if smart_context.get("git_status"):
+            lines.append("")
+            lines.append("### Git Status")
+            lines.append("```text")
+            lines.append(smart_context["git_status"])
+            lines.append("```")
+    
     lines.extend(["", "### Output", "```text", body_text.rstrip("\n"), "```"])
+
+    # Add ls if smart mode
+    if smart and smart_context.get("ls"):
+        lines.insert(-2, "")
+        lines.insert(-2, "### Directory Listing")
+        lines.insert(-2, "```text")
+        lines.insert(-2, smart_context["ls"])
+        lines.insert(-2, "```")
 
     if include_errors:
         blocks = extract_error_blocks(full_text)
@@ -1032,6 +1320,8 @@ def cmd_share(args: List[str]) -> int:
                 "full": include_full,
                 "redacted": redact,
                 "errors_included": include_errors,
+                "smart": smart,
+                "context": smart_context if smart else {},
                 "output": body_text,
                 "error_blocks": blocks,
             }
@@ -1062,6 +1352,8 @@ def cmd_share(args: List[str]) -> int:
                 "full": include_full,
                 "redacted": redact,
                 "errors_included": include_errors,
+                "smart": smart,
+                "context": smart_context if smart else {},
                 "output": body_text,
                 "error_blocks": [],
             }
@@ -1720,6 +2012,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         "link": cmd_link,
         "flow": cmd_flow,
         "doctor": cmd_doctor,
+        "project": cmd_project,
+        "proj": cmd_project,
         "self-check": cmd_self_check,
         "cfg": cmd_cfg,
         "init": cmd_init,

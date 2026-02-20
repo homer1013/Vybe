@@ -23,15 +23,25 @@ vybe rr
 
 ## Core Commands
 
-### `vybe run [--tag <name>] <cmd...>` / `vybe r`
+### `vybe run [--tag <name>] [--tty] <cmd...>` / `vybe r`
 
 Run a command, show output live, and save to a log file. The output appears in your terminal exactly as it would without Vybe, but it's also persisted for later access.
+
+**Flags:**
+- `--tag <name>` — Assign a tag to this run for later filtering
+- `--tty` — Allocate a TTY for interactive/sudo commands (useful for password prompts)
+
+**Detections:**
+- GUI commands: Shows a warning if Tkinter, Qt, or Wx imports are detected
+- Sudo commands: Shows a tip to use `--tty` for interactive prompts
+- File errors: Suggests similar files if a command-not-found occurs
 
 **Examples:**
 ```bash
 vybe r pytest -q
 vybe run --tag auth-tests pytest tests/auth/ -q
 vybe r npm run build
+vybe run --tty sudo systemctl restart nginx
 ```
 
 **Output:** Saves to `~/.cache/vybe/vybe_TIMESTAMP.log`
@@ -212,7 +222,7 @@ Export capture in machine-readable JSON for agents/tools.
 }
 ```
 
-### `vybe share [--full] [--redact] [--errors] [--json] [--clip]`
+### `vybe share [--full] [--redact] [--errors] [--smart] [--json] [--clip]`
 
 Build a shareable bundle (Markdown or JSON) from the last capture.
 
@@ -220,13 +230,26 @@ Build a shareable bundle (Markdown or JSON) from the last capture.
 - `--full` — Include command header (default: output only)
 - `--redact` — Mask secrets
 - `--errors` — Extract error blocks
+- `--smart` — Auto-bundle context: pwd, ls, git status, python version, venv status
 - `--json` — Output as JSON instead of Markdown
 - `--clip` — Copy to clipboard instead of printing
+
+**Smart Context Gathering:**
+The `--smart` flag automatically includes:
+- Current working directory
+- Directory listing (`ls -la`)
+- Python version
+- Git status (if in a repo)
+- Virtual environment status
+
+Perfect for handing off your full debugging context to an LLM in one command.
 
 **Examples:**
 ```bash
 vybe share --redact --errors --clip
-vybe share --json | curl -X POST https://my-tool.com/api/share
+vybe share --smart --json | curl -X POST https://my-tool.com/api/share
+vybe share --smart --redact --clip
+vybe share --json | jq .context
 ```
 
 ### `vybe prompt <debug|review|explain> [--redact] [extra request...]`
@@ -390,17 +413,52 @@ vybe md
 
 ## System & Setup
 
-### `vybe doctor [--json]`
+### `vybe doctor [--json] [--explain]`
 
 Print environment snapshot: Python version, platform, tmux, git status, clipboard tools, etc.
 
-**Useful for:** Diagnosing setup issues, generating environment reports.
+**Flags:**
+- `--json` — Output as JSON
+- `--explain` — Include plain-English explanations of each diagnostic and any issues detected
+
+**Useful for:** Diagnosing setup issues, generating environment reports, understanding what's missing.
+
+With `--explain`, doctor adds:
+- ✓/✗ indicators for each tool
+- Plain-English descriptions of what each diagnostic means
+- Actionable guidance (e.g., "Install xclip for clipboard support")
+- Environment safety checks (dirty git repos, missing venv, etc.)
 
 **Examples:**
 ```bash
 vybe doctor
+vybe doctor --explain
 vybe doctor --json | curl -X POST https://my-support.com/diagnostics
 ```
+
+### `vybe project [--json]` / `vybe proj`
+
+Show project structure and metadata: Python version, pyproject.toml, requirements files, virtual environments, source tree.
+
+**Flags:**
+- `--json` — Output as JSON
+
+**Displays:**
+- Current working directory and Python version
+- Presence of pyproject.toml, setup.py
+- Requirement files (requirements.txt, Pipfile, poetry.lock, etc.)
+- Available virtual environments (.venv, venv, env, etc.)
+- Virtual environment activation status
+- Directory structure (first 2 levels)
+
+**Examples:**
+```bash
+vybe project
+vybe proj  # Shorter alias
+vybe project --json
+```
+
+**Useful for:** Understanding project layout when onboarding, verifying setup, generating context for LLM assistance.
 
 ### `vybe self-check [--json]`
 

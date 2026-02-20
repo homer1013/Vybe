@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vybe"
-version = "1.0.0"
+version = "1.1.0"
 description = "Vibe coding terminal capture toolkit"
 authors = [{name = "Homer Morrill"}]
 license = {text = "MIT"}

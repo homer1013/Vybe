@@ -37,6 +37,8 @@ commands=(
   "link:Start web server (dev)"
   "flow:Save/replay command sequences"
   "doctor:Print environment diagnostics"
+  "project:Show project structure and metadata"
+  "proj:Alias for project"
   "self-check:Check install and update guidance"
   "cfg:Print config and paths"
   "init:Initialize vybe defaults"

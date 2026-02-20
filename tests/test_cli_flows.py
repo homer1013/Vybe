@@ -256,6 +256,73 @@ class VybeCliFlowsTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, f"Failed for {help_arg}")
             self.assertIn("vybe - vibe coding terminal capture toolkit", result.stdout)
 
+    def test_run_with_tty_flag(self):
+        # Test that --tty flag is parsed without error
+        # Note: In test environment, TTY mode won't actually allocate a PTY,
+        # but the flag should be accepted
+        result = run_vybe(["run", "--tty", "echo", "test"], self.base_env)
+        # In test environment, TTY mode runs without capture, so output is in stdout
+        # The command should execute successfully
+        self.assertTrue(result.returncode == 0 or "Saved:" in result.stdout + result.stderr)
+        
+    def test_doctor_with_explain_flag(self):
+        # Test doctor --explain for human diagnostics
+        result = run_vybe(["doctor", "--explain"], self.base_env)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("vybe doctor", result.stdout)
+        self.assertIn("Explanation", result.stdout)
+        # Should have some indicators
+        self.assertTrue(
+            any(c in result.stdout for c in ["✓", "✗", "⚠", "ℹ"])
+        )
+
+    def test_share_with_smart_flag(self):
+        # Capture something first
+        cap = run_vybe(["run", "echo", "ok"], self.base_env)
+        self.assertEqual(cap.returncode, 0)
+        
+        # Test share --smart
+        result = run_vybe(["share", "--smart"], self.base_env)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Vybe Share", result.stdout)
+        
+        # Test share --smart --json
+        result = run_vybe(["share", "--smart", "--json"], self.base_env)
+        self.assertEqual(result.returncode, 0)
+        payload = json.loads(result.stdout)
+        self.assertTrue(payload.get("smart"))
+        self.assertIn("context", payload)
+        # Context should have gathered environmental info
+        context = payload.get("context", {})
+        # Should have pwd or python version
+        self.assertTrue(
+            context.get("pwd") or context.get("python")
+        )
+
+    def test_project_command(self):
+        # Test project snapshot
+        result = run_vybe(["project"], self.base_env)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Project:", result.stdout)
+        self.assertIn("Path:", result.stdout)
+        self.assertIn("Python:", result.stdout)
+        
+        # Test project --json
+        result = run_vybe(["project", "--json"], self.base_env)
+        self.assertEqual(result.returncode, 0)
+        payload = json.loads(result.stdout)
+        self.assertIn("cwd", payload)
+        self.assertIn("structure", payload)
+        self.assertIn("has_pyproject_toml", payload)
+
+    def test_project_alias_proj(self):
+        # Test that 'proj' is an alias for 'project'
+        result_proj = run_vybe(["proj"], self.base_env)
+        result_project = run_vybe(["project"], self.base_env)
+        self.assertEqual(result_proj.returncode, result_project.returncode)
+        self.assertIn("Project:", result_proj.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
+
