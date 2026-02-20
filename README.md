@@ -141,6 +141,7 @@ vybe rr --cwd
 vybe snip
 vybe snipclip
 vybe snipclip --redact
+vybe clip            # Copy entire last capture (command + output)
 vybe cc              # Copy just command
 vybe history 3       # Bulk grab 3 runs for LLM
 vybe select          # Interactive picker (fzf)
