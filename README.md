@@ -34,10 +34,20 @@ With Vybe:
 - **`vybe snipclip`** / **`vybe sc`** copies output only (perfect for issues/LLM chats).
 - **`vybe snipclip --redact`** masks common secrets automatically.
 
+**Interactive Commands (v1.1.0+):**
+- **`vybe run --tty ...`** allocate TTY for sudo and password prompts.
+- Auto-detects sudo usage and GUI apps (Tkinter, Qt, Wx) with helpful warnings.
+- File error detection: fuzzy-suggests similar files when command not found.
+
 **LLM Workflow (v1.0.0+):**
 - **`vybe cc`** copy just the command to clipboard (for tweaking).
 - **`vybe history [N]`** bulk grab last N runs for LLM handoff.
 - **`vybe select`** interactive fzf picker for multi-select captures.
+- **`vybe share --smart`** (v1.1.0+) auto-bundle full context: pwd, ls, git status, venv.
+
+**Better Diagnostics (v1.1.0+):**
+- **`vybe doctor --explain`** human-readable environment checks with actionable guidance.
+- **`vybe project`** / **`vybe proj`** show project structure and metadata.
 
 **Analysis & Discovery:**
 - **`vybe errors`** extracts likely error blocks from latest capture.
@@ -122,6 +132,7 @@ GitHub Actions will build and publish automatically.
 # Capture & replay
 vybe run pytest -q
 vybe r pytest -q
+vybe run --tty sudo systemctl restart nginx    # Interactive/sudo
 vybe retry
 vybe rr
 vybe rr --cwd
@@ -133,6 +144,10 @@ vybe snipclip --redact
 vybe cc              # Copy just command
 vybe history 3       # Bulk grab 3 runs for LLM
 vybe select          # Interactive picker (fzf)
+
+# Smart context bundling (v1.1.0+)
+vybe share --smart --redact --clip   # Auto-gather pwd, ls, git, venv
+vybe share --smart --json
 
 # Analysis
 vybe fail
@@ -146,6 +161,11 @@ vybe ls
 vybe ll 5
 vybe ls --tag auth
 vybe open
+
+# Project & diagnostics (v1.1.0+)
+vybe project         # Show structure, venv, requirements
+vybe proj --json
+vybe doctor --explain    # Human-readable environment checks
 
 # Workflows
 vybe flow save test-run      # Save sequence
@@ -164,12 +184,14 @@ vybe run --tag auth pytest -q
 # Export & share
 vybe export --last --json --snip --redact
 vybe share --redact --errors --clip
+vybe share --smart --redact --clip    # Auto-bundle context (v1.1.0+)
 vybe share --json
 vybe prompt debug --redact
 
 # System & help
 vybe man             # Read comprehensive manual
-vybe doctor
+vybe doctor --explain                # Human-readable diagnostics (v1.1.0+)
+vybe project                         # Project snapshot (v1.1.0+)
 vybe self-check
 vybe cfg
 vybe init
@@ -186,6 +208,7 @@ vybe md bash
 - `vybe cc` → `vybe cmdcopy`
 - `vybe o` → `vybe open`
 - `vybe ll [N]` → `vybe ls [N]`
+- `vybe proj [--json]` → `vybe project [--json]` (v1.1.0+)
 - Full commands remain the canonical docs and are recommended in scripts/automation
 
 ## Quick recipes
@@ -196,6 +219,15 @@ vybe r pytest -q
 vybe errors
 vybe share --redact --errors --clip
 vybe rr
+```
+
+LLM Handoff with full context (v1.1.0+):
+```bash
+vybe r pytest -q
+vybe share --smart --redact --clip  # Auto-bundle pwd, ls, git, venv
+# Or bulk multiple runs:
+vybe history 3 --redact             # Grab last 3 runs
+vybe prompt debug --redact          # Generate LLM prompt
 ```
 
 LLM Handoff (v1.0.0+):
@@ -268,8 +300,10 @@ vybe prompt explain --redact
 
 Get quick environment diagnostics:
 ```bash
-vybe doctor
+vybe doctor              # Quick snapshot
+vybe doctor --explain    # Human-readable with guidance (v1.1.0+)
 vybe doctor --json
+vybe project             # Show project structure (v1.1.0+)
 vybe self-check
 vybe self-check --json
 vybe cfg --json
